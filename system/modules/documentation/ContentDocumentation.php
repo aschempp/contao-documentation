@@ -84,7 +84,7 @@ class ContentDocumentation extends ContentElement
 		$strBuffer = Markdown($objRequest->response);
 		
 		// Replace relative links to markdown documents with our script
-		$strBuffer = preg_replace('/href="([a-z\/]+?).md"/is', 'href="' . $this->generateFrontendUrl($objPage->row(), '/$1') . '"', $strBuffer);
+		$strBuffer = preg_replace('/href="([a-z\/]+?).md"/is', 'href="' . $this->generateFrontendUrl($objPage->row(), '/' . dirname(str_replace($GLOBALS['TL_LANGUAGE'].'/', '', $strFile)) . '/$1') . '"', $strBuffer);
 		
 		// Enable syntax hightlighter
 		$strBuffer = preg_replace_callback('{(<pre><code class="([a-z0-9]+)">)(.+?)(</code></pre>)}is', array($this, 'addSyntaxHighlighter'), $strBuffer);
