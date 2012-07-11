@@ -10,12 +10,12 @@
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation, either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this program. If not, please visit the Free
  * Software Foundation website at <http://www.gnu.org/licenses/>.
@@ -36,8 +36,20 @@ class ContentDocumentation extends ContentElement
 	 * @var string
 	 */
 	protected $strTemplate = 'ce_documentation';
-	
-	
+
+	/**
+	 * Absolute base URL to GitHub
+	 * @var string
+	 */
+	protected $strAbsoluteBase;
+
+	/**
+	 * Relative base URL to local Contao site
+	 * @var string
+	 */
+	protected $strRelativeBase;
+
+
 	public function generate()
 	{
 		if (TL_MODE == 'BE')
@@ -54,8 +66,8 @@ class ContentDocumentation extends ContentElement
 
 		return parent::generate();
 	}
-	
-	
+
+
 	protected function compile()
 	{
 		global $objPage;
@@ -64,35 +76,70 @@ class ContentDocumentation extends ContentElement
 		$strFile = str_replace('index.php/', '', $strFile);
 		$strFile = str_replace($GLOBALS['TL_CONFIG']['urlSuffix'], '', $strFile);
 		$strFile = str_replace('/'.$objPage->alias, '', $strFile);
-		
+
 		if (strlen($strFile) < 4)
 		{
 			$this->error404();
 		}
-		
+
 		$objRequest = new Request();
 		$objRequest->send('https://raw.github.com/' . $this->github_user . '/' . $this->github_project . '/' . $this->github_branch . '/' . $this->github_path . $strFile . '.md');
-		
+
 		if ($objRequest->hasError())
 		{
 			$this->error404();
 		}
-		
+
+		// Generate absolute and relative URLs
+		$this->strAbsoluteBase = 'https://github.com/' . $this->github_user . '/' . $this->github_project . '/raw/' . $this->github_branch . '/' . $this->github_path . dirname($strFile);
+		$this->strRelativeBase = dirname(str_replace($GLOBALS['TL_LANGUAGE'].'/', '', $strFile));
+
 		require_once(TL_ROOT . '/system/modules/documentation/markdown.php');
 		$GLOBALS['TL_JAVASCRIPT'][] = 'plugins/highlighter/shCore.css';
 
 		$strBuffer = Markdown($objRequest->response);
-		
-		// Replace relative links to markdown documents with our script
-		$strBuffer = preg_replace('/href="([a-z\/]+?).md"/is', 'href="' . $this->generateFrontendUrl($objPage->row(), '/' . dirname(str_replace($GLOBALS['TL_LANGUAGE'].'/', '', $strFile)) . '/$1') . '"', $strBuffer);
-		
+
+		// Update all hyperlinks from GitHub
+		$strBuffer = preg_replace_callback('{(<img src="|<a href=")(.*?)(".*?>)}uis', array($this, 'replaceRelativeLinks'), $strBuffer);
+
 		// Enable syntax hightlighter
 		$strBuffer = preg_replace_callback('{(<pre><code class="([a-z0-9]+)">)(.+?)(</code></pre>)}is', array($this, 'addSyntaxHighlighter'), $strBuffer);
-		
+
 		$this->Template->buffer = $strBuffer;
 	}
-	
-	
+
+
+	private function replaceRelativeLinks($matches)
+	{
+		// Do not change absolute URLs
+		if (substr($matches[2], 0, 4) == 'http')
+		{
+			$strUrl = $matches[2];
+		}
+
+		// Asset patch is absolute to GitHub
+		elseif (strpos($matches[2], 'assets') !== false)
+		{
+			$strUrl = $this->strAbsoluteBase . dirname($strFile) . '/' . $matches[2];
+		}
+
+		// All markdown files are relative to Contao base tag
+		elseif (substr($matches[2], -3) == '.md')
+		{
+			global $objPage;
+
+			$strUrl = $this->generateFrontendUrl($objPage->row(), '/' . $this->strRelativeBase . '/' . substr($matches[2], 0, -3));
+		}
+
+		else
+		{
+			$strUrl = $matches[2];
+		}
+
+		return $matches[1] . $strUrl . $matches[3];
+	}
+
+
 	private function addSyntaxHighlighter($matches)
 	{
 		$arrMapper = array
@@ -120,7 +167,7 @@ class ContentDocumentation extends ContentElement
 			'chtml'      => 'shBrushXml',
 			'xml'        => 'shBrushXml'
 		);
-		
+
 		$highlight = strtolower($matches[2]);
 
 		if (!isset($arrMapper[$highlight]))
@@ -165,11 +212,11 @@ class ContentDocumentation extends ContentElement
 
 		// Add the initialization script to the head section and not (!) to TL_JAVASCRIPT
 		$GLOBALS['TL_HEAD'][] = $strInit;
-		
+
 		return '<pre class="brush: ' . $highlight . '">' . $matches[3] . '</pre>';
 	}
-	
-	
+
+
 	private function error404()
 	{
 		$objError = new PageError404();
